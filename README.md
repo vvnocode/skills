@@ -9,15 +9,9 @@ git clone https://github.com/vvnocode/skills.git
 cd skills && ./install.sh          # 全部；或 ./install.sh agent-memory-setup 只装指定的
 ```
 
-`install.sh` 把 `skills/*` 软链到三处全局发现根，幂等、只增不减：
+`install.sh` 把 `skills/*` 软链到三处全局发现根，幂等、只增不减：`~/.agents/skills/`（跨工具 canonical 根，dsh、opencode、Cline、Dexto、Kimi、Warp、Zed 等直接读）、`~/.claude/skills/`（Claude Code 只认此处）、`~/.codex/skills/`（Codex 只认此处）。各工具的规则入口与 Skill 发现根以 [vvnocode/claude.md 的支持矩阵](https://github.com/vvnocode/claude.md#支持矩阵) 为唯一正本，本仓不另维护。
 
-| 发现根 | 谁读它 |
-|---|---|
-| `~/.agents/skills/` | 跨工具约定俗成的 canonical 根：dsh、opencode、Cline、Dexto、Kimi、Warp、Zed 等 |
-| `~/.claude/skills/` | Claude Code（不扫 `~/.agents/skills`） |
-| `~/.codex/skills/` | Codex（不扫 `~/.agents/skills`） |
-
-opencode 同时扫 `~/.claude/skills` 与 `~/.agents/skills`，不必另挂 `~/.config/opencode/skills`。新电脑只需 clone 加一次 `./install.sh`；仓库更新后 `git pull` 即生效，软链不用重做。卸载时手工删除对应软链。
+新电脑只需 clone 加一次 `./install.sh`；仓库更新后 `git pull` 即生效，软链不用重做。卸载时手工删除对应软链。
 
 ## Skill 列表
 

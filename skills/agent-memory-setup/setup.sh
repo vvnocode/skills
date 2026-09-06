@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # agent-memory-setup：让 Claude Code / Codex / dsh / opencode 在同一仓库共用一份指令（AGENTS.md）与一份仓内记忆（.memory/）。
 #
-# 用法：setup.sh [仓库路径] [--no-rule]
-#   仓库路径缺省为当前所在 git 仓库根；--no-rule 表示不往 AGENTS.md 追加「项目记忆」节（自己已写过规则时用）。
+# 用法：setup.sh [仓库路径] [--with-rule]
+#   仓库路径缺省为当前所在 git 仓库根。--with-rule 才往 AGENTS.md 追加「项目记忆」节：跨工具全局规则
+#   （如 vvnocode/claude.md 的「项目记忆」节）已经约束「仓内 .memory/ 存在时怎么读写」，装了它的机器不必每仓再写一份；
+#   只给没有全局规则的协作者用的仓库才需要 --with-rule。
 #
 # 幂等：已就位的项不动、只补缺；不删除、不覆盖已有内容。无法自动裁定的冲突（如 AGENTS.md 与 CLAUDE.md 都是
 # 普通文件且内容不同）只告警交人工，其余步骤照做。Windows 请按 SKILL.md 手工执行。
 set -euo pipefail
 
-WRITE_RULE=1
+WRITE_RULE=0
 ROOT=""
 for arg in "$@"; do
     case "$arg" in
-        --no-rule) WRITE_RULE=0 ;;
-        -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --with-rule) WRITE_RULE=1 ;;
+        -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) ROOT="$arg" ;;
     esac
 done
@@ -129,10 +131,10 @@ else
     ok "已在 .codex/config.toml 追加 [memories] 节"
 fi
 
-# ── 6) AGENTS.md 写死记忆规则：这是 Codex / dsh / opencode 侧唯一的约束手段 ──
-# Claude 的记忆格式与「先读索引」由它自己的系统提示注入，别的工具没有这一层，只能靠指令文件。
+# ── 6) AGENTS.md 写死记忆规则（仅 --with-rule）：没有全局规则时，这是 Codex / dsh / opencode 侧唯一的约束手段 ──
+# Claude 的记忆格式与「先读索引」由它自己的系统提示注入，别的工具没有这一层，只能靠规则文件——全局的或仓内的。
 if [ "$WRITE_RULE" -eq 0 ]; then
-    ok "--no-rule：不改 AGENTS.md"
+    ok "未传 --with-rule：不改 AGENTS.md（读写规则由全局规则仓承担）"
 elif [ -f AGENTS.md ] && grep -q '\.memory/' AGENTS.md; then
     ok "AGENTS.md 已提及 .memory/，不重复追加"
 elif [ -f AGENTS.md ] && [ ! -L AGENTS.md ]; then

@@ -13,21 +13,22 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 
 | | Claude Code | Codex | dsh | opencode |
 |---|---|---|---|---|
-| 读项目指令 | 只读 `CLAUDE.md`（**不读 `AGENTS.md`**） | 只读 `AGENTS.md` | `AGENTS.md`（也认 `CLAUDE.md`） | `AGENTS.md`（也认 `CLAUDE.md`） |
+| 读项目指令 | 只读 `CLAUDE.md`（**不读 `AGENTS.md`**） | 只读 `AGENTS.md` | `AGENTS.md`（也认 `CLAUDE.md`） | 只读 `AGENTS.md` |
 | 自带跨会话记忆 | 有；目录可改：`autoMemoryDirectory` | 有；目录**不可改**，固定 `$CODEX_HOME/memories` | 无 | 无 |
 | 记忆读写规则来源 | 自身系统提示 + `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` | 仅 `AGENTS.md` |
-| 项目级配置 | `.claude/settings.local.json` | `.codex/config.toml`（**需项目被信任**） | 无 | `opencode.json`（本 skill 不需要） |
+| 用户级指令 | `~/.claude/CLAUDE.md` | `~/.codex/AGENTS.md` | `$DSH_HOME/AGENTS.md`（默认 `~/.dsh/`） | `~/.config/opencode/AGENTS.md` |
+| 项目级配置 | `.claude/settings.local.json` | `.codex/config.toml`（**需项目被信任**） | 无 | 无需 |
 | 全局 Skill 发现根 | `~/.claude/skills/` | `~/.codex/skills/` | `~/.agents/skills/` | `~/.config/opencode/skills/`、`~/.claude/skills/`、`~/.agents/skills/` |
 
-「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有 `AGENTS.md` 里写了才会做。步骤 4 因此不能省。
+「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」四处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/claude.md](https://github.com/vvnocode/claude.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（步骤 4，`setup.sh --with-rule`）。
 
 ## 一键执行
 
 ```bash
-./setup.sh [仓库路径] [--no-rule]
+./setup.sh [仓库路径] [--with-rule]
 ```
 
-在目标仓库根目录运行（或传路径）。幂等，只补缺不覆盖；不能自动裁定的冲突只告警。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），然后按「验证」节逐工具确认。Windows 无法运行本脚本，按下面手工步骤做，软链换 junction 或副本。
+在目标仓库根目录运行（或传路径）。幂等，只补缺不覆盖；不能自动裁定的冲突只告警。默认不改 `AGENTS.md`，只有 `--with-rule` 才追加「项目记忆」节。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），然后按「验证」节逐工具确认。Windows 无法运行本脚本，按下面手工步骤做，软链换 junction 或副本。
 
 ## 手工步骤（脚本做的事）
 
@@ -63,7 +64,7 @@ dedicated_tools  = false    # 收掉 list/read/search/add_ad_hoc_note
 trust_level = "trusted"
 ```
 
-**4. 在 `AGENTS.md` 写死记忆规则。** 记忆一律存 `.memory/`，随代码提交；会话开始先读 `MEMORY.md` 索引；每条记忆单独一个 `.md`，frontmatter 含 `name` / `description` / `metadata.type`（`user` | `feedback` | `project` | `reference`）；写入前先查已有条目。`setup.sh` 追加的原文见脚本第 6 步。
+**4. 记忆规则进规则文件。** 优先写在跨工具全局规则里（一次生效所有仓）；没有全局规则时写进仓内 `AGENTS.md`（`setup.sh --with-rule`）。内容：记忆一律存 `.memory/`，随代码提交；会话开始先读 `MEMORY.md` 索引；每条记忆单独一个 `.md`，frontmatter 含 `name` / `description` / `metadata.type`（`user` | `feedback` | `project` | `reference`）；写入前先查已有条目。`setup.sh` 追加的原文见脚本第 6 步。
 
 ## worktree 里的会话
 
@@ -91,11 +92,13 @@ ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.loc
 | **Codex 后台记忆管线只读全局配置** | 项目级 `generate_memories = false` **挡不住**它按会话更新时间重新提取、重建 `~/.codex/memories` | 要彻底停只能改全局，代价是所有项目一起停；否则接受仓库外持续产生副本，本项目 `use_memories = false` 读不回来即可 |
 | 去清 `~/.codex/memories` | 数据流是 `memories_1.sqlite` 的 `stage1_outputs` → `raw_memories.md` → `MEMORY.md` 等五处，只删 `MEMORY.md` 无效；清了也会被重建 | 不要花时间清 |
 | 在裸 worktree 里开 Claude 会话 | `settings.local.json` 缺失，记忆目录退回默认位置 | 见「worktree 里的会话」 |
-| 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 步骤 4 不能省 |
+| 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 步骤 4 不能省：全局规则或 `--with-rule` 二选一 |
+| 全局规则只挂了部分工具 | 漏挂的工具（常见是 opencode 的 `~/.config/opencode/AGENTS.md`）永远读不到规则 | 按上表「用户级指令」四处逐一核对软链 |
 
 ## 常见错误
 
-- 只做了 Claude 一侧，以为「别的工具本来就读 AGENTS.md 所以没问题」：它们读到的 AGENTS.md 里根本没有记忆规则。
+- 只做了 Claude 一侧，以为「别的工具本来就读 AGENTS.md 所以没问题」：它们读到的规则文件里根本没有记忆规则。
+- 装了全局规则又每仓 `--with-rule`：两份同义规则并存，不出错但多余。
 - 自己发明一个 `MEMORY.md` 约定但没设 `autoMemoryDirectory`：Claude 的自动记忆仍写在仓库外。
 - 把 `autoMemoryDirectory` 写进入库的 `settings.json`：被忽略，且带上了本机绝对路径。
 - 在未被信任的临时目录里测 Codex 项目配置，得出「项目级配置无效」的错误结论。

@@ -41,6 +41,8 @@ class InstallPs1Test(bash_tests.InstallTest):
 
     WARN_MARK = "!"
     SKIP_TEXT = "! skipped nope"
+    SETUP_FILE = "setup.ps1"
+    SETUP_HINT = "ships setup.ps1"
 
     def run_ps(self, command: str, cwd, env) -> subprocess.CompletedProcess:
         """跑一段 PowerShell 命令，stdout 按 UTF-8 解码。"""

@@ -81,6 +81,12 @@ main() {
         done
     done
     echo "· 安装完成：新建 $ADDED 条，已就位 $KEPT 条，告警 $WARN 条（发现根：${ROOTS[*]}）"
+
+    # ── 自带 setup 脚本的 skill 只提示、不代跑：setup 作用于某个具体仓库，装 skill 作用于整台机器，两者不是一回事 ──
+    for name in "${NAMES[@]}"; do
+        [ -f "$REPO/skills/$name/setup.sh" ] || continue
+        echo "· $name 自带 setup.sh：进入目标仓库后运行 ${ROOTS[0]}/$name/setup.sh [参数]，用法见 skills/$name/README.md"
+    done
 }
 
 main "$@"

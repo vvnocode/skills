@@ -45,33 +45,40 @@ warn() { echo "⚠ $*"; WARN=$((WARN + 1)); }
 
 echo "═══ agent-memory-setup：$ROOT ═══"
 
-# ── 1) 指令合一：AGENTS.md 为正本，CLAUDE.md 是指向它的相对软链 ──
+# ── 1) 指令合一：AGENTS.md 为正本，CLAUDE.md 只含一行 @AGENTS.md 引用 ──
 # Claude Code 只读 CLAUDE.md、不读 AGENTS.md；Codex / dsh / opencode 读 AGENTS.md。两份都要有、且必须是同一份。
+# 用引用行而不是软链：不需要任何权限，检出到 Windows 也有效；软链入库后在 Windows 默认 core.symlinks=false 下
+# 会变成只含 "AGENTS.md" 四个字的文本文件。旧做法留下的软链在这里自动改为引用行。
+IMPORT_LINE='@AGENTS.md'
+write_import() { printf '%s\n' "$IMPORT_LINE" > CLAUDE.md; }
 if [ -L AGENTS.md ]; then
     warn "AGENTS.md 本身是软链（指向 $(readlink AGENTS.md)），未改动：请把正本改为 AGENTS.md 后重跑"
 elif [ -L CLAUDE.md ]; then
     if [ "$(readlink CLAUDE.md)" = "AGENTS.md" ]; then
-        ok "CLAUDE.md -> AGENTS.md 已就位"
+        rm CLAUDE.md && write_import
+        ok "CLAUDE.md 由软链改为引用行 @AGENTS.md（旧做法迁移）"
     else
         warn "CLAUDE.md 是指向 $(readlink CLAUDE.md) 的软链，未改动：请确认它最终指向 AGENTS.md"
     fi
 elif [ -f CLAUDE.md ] && [ -f AGENTS.md ]; then
-    if cmp -s CLAUDE.md AGENTS.md; then
-        rm CLAUDE.md && ln -s AGENTS.md CLAUDE.md
-        ok "CLAUDE.md 与 AGENTS.md 同内容：已改为软链"
+    if grep -qx "$IMPORT_LINE" CLAUDE.md; then
+        ok "CLAUDE.md 已引用 AGENTS.md"
+    elif cmp -s CLAUDE.md AGENTS.md; then
+        write_import
+        ok "CLAUDE.md 与 AGENTS.md 同内容：已改为引用行"
     else
-        warn "AGENTS.md 与 CLAUDE.md 都是普通文件且内容不同，未改动：请人工把 CLAUDE.md 内容并入 AGENTS.md，再执行 rm CLAUDE.md && ln -s AGENTS.md CLAUDE.md"
+        warn "AGENTS.md 与 CLAUDE.md 都是普通文件且内容不同，未改动：请人工把 CLAUDE.md 内容并入 AGENTS.md，再把 CLAUDE.md 改为只含一行 @AGENTS.md"
     fi
 elif [ -f CLAUDE.md ]; then
-    mv CLAUDE.md AGENTS.md && ln -s AGENTS.md CLAUDE.md
-    ok "只有 CLAUDE.md：已改名为 AGENTS.md，并建 CLAUDE.md -> AGENTS.md"
+    mv CLAUDE.md AGENTS.md && write_import
+    ok "只有 CLAUDE.md：已改名为 AGENTS.md，并写 CLAUDE.md 引用行"
 elif [ -f AGENTS.md ]; then
-    ln -s AGENTS.md CLAUDE.md
-    ok "已建 CLAUDE.md -> AGENTS.md"
+    write_import
+    ok "已写 CLAUDE.md 引用行 @AGENTS.md"
 else
-    printf '# AGENTS.md\n\n项目指令正本；`CLAUDE.md` 是指向本文件的软链，两者永远同一份。\n' > AGENTS.md
-    ln -s AGENTS.md CLAUDE.md
-    ok "已新建 AGENTS.md 与 CLAUDE.md 软链"
+    printf '# AGENTS.md\n\n项目指令正本；`CLAUDE.md` 只含一行 `@AGENTS.md` 引用本文件，两者永远同一份。\n' > AGENTS.md
+    write_import
+    ok "已新建 AGENTS.md 与 CLAUDE.md 引用行"
 fi
 
 # ── 2) 仓内记忆目录 ──

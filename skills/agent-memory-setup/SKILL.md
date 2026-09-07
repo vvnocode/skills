@@ -7,7 +7,7 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 
 ## 核心
 
-一份指令、一份仓库内记忆，每个工具都指向它。做法是四件事：`AGENTS.md` 当正本、`CLAUDE.md` 做软链；记忆放仓内 `.memory/` 随代码提交；能改记忆目录的工具用配置指过来，不能改的把自带记忆关掉；再把记忆读写规则写进 `AGENTS.md`。**各工具强度不对等**：Claude 可以用配置硬指定记忆目录；Codex 的记忆目录写死在 `$CODEX_HOME/memories`，只能关掉再靠指令约束；dsh 与 opencode 没有自带的跨会话记忆，全靠指令。
+一份指令、一份仓库内记忆，每个工具都指向它。做法是四件事：`AGENTS.md` 当正本、`CLAUDE.md` 只放一行 `@AGENTS.md` 引用；记忆放仓内 `.memory/` 随代码提交；能改记忆目录的工具用配置指过来，不能改的把自带记忆关掉；再把记忆读写规则写进 `AGENTS.md`。**各工具强度不对等**：Claude 可以用配置硬指定记忆目录；Codex 的记忆目录写死在 `$CODEX_HOME/memories`，只能关掉再靠指令约束；dsh 与 opencode 没有自带的跨会话记忆，全靠指令。
 
 ## 机制对照
 
@@ -24,21 +24,29 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 
 ## 一键执行
 
+macOS / Linux：
+
 ```bash
 ./setup.sh [仓库路径] [--with-rule]
 ```
 
-在目标仓库根目录运行（或传路径）。幂等，只补缺不覆盖；不能自动裁定的冲突只告警。默认不改 `AGENTS.md`，只有 `--with-rule` 才追加「项目记忆」节。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），然后按「验证」节逐工具确认。Windows 无法运行本脚本，按下面手工步骤做，软链换 junction 或副本。
+Windows（系统自带的 PowerShell 5.1 即可）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\setup.ps1" [仓库路径] [-WithRule]
+```
+
+在目标仓库根目录运行（或传路径）。幂等，只补缺不覆盖；不能自动裁定的冲突只告警。默认不改 `AGENTS.md`，只有 `--with-rule` / `-WithRule` 才追加「项目记忆」节。两个脚本写入仓库的文件逐字节一致。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），然后按「验证」节逐工具确认。不装 skill、直接用 curl / irm 执行的写法见同目录 README.md。
 
 ## 手工步骤（脚本做的事）
 
-**1. 指令合一。** 保留 `AGENTS.md` 为唯一正本，补 Claude 入口：
+**1. 指令合一。** 保留 `AGENTS.md` 为唯一正本，`CLAUDE.md` 只写一行引用：
 
 ```bash
-ln -s AGENTS.md CLAUDE.md
+printf '@AGENTS.md\n' > CLAUDE.md
 ```
 
-相对软链可直接入库，`git worktree add` 出来的 worktree 里照样可见。也可以在 `CLAUDE.md` 里写一行 `@AGENTS.md`，二选一。
+这是 Claude Code 的导入语法：相对路径按 CLAUDE.md 所在目录解析，仓库内的引用不弹确认框，worktree 里照样有效。不要用软链：入库的软链在 Windows 默认 `core.symlinks=false` 下检出后是只含 `AGENTS.md` 四个字的文本文件，Claude 读到的就是这四个字。`setup.sh` / `setup.ps1` 会把旧做法留下的软链自动改为引用行。
 
 **2. Claude 记忆改到仓内。** 建 `.memory/MEMORY.md`，写 `.claude/settings.local.json`（**不要写入库的 `settings.json`**，官方文档标明该项在项目级 settings 里会因安全被忽略）：
 
@@ -77,7 +85,7 @@ ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.loc
 ## 验证
 
 - Claude：在仓库目录开会话，问「不用工具，复述项目指令里关于记忆写入位置的那条」；答不出就是 `CLAUDE.md` 没加载。
-- Codex：`./codex-effective-config.py <仓库绝对路径>`。它走 app-server 的 `config/read` 按 cwd 解析项目层，并抓 stderr 里的未信任警告。**不要用 `codex doctor`**，它只报全局值。
+- Codex：`./codex-effective-config.py <仓库绝对路径>`（Windows：`python codex-effective-config.py <路径>`）。它走 app-server 的 `config/read` 按 cwd 解析项目层，并抓 stderr 里的未信任警告。**不要用 `codex doctor`**，它只报全局值。
 - dsh / opencode：开会话问同一问题，它们读 `AGENTS.md`。
 - 记忆可见性：在 `MEMORY.md` 放一条带口令的索引行，问各工具读到几条。
 
@@ -85,7 +93,8 @@ ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.loc
 
 | 陷阱 | 后果 | 应对 |
 |---|---|---|
-| 没有 `CLAUDE.md` | Claude 完全不读项目规则，**无任何提示** | 必须有软链或 `@AGENTS.md` |
+| 没有 `CLAUDE.md` | Claude 完全不读项目规则，**无任何提示** | 必须有一行 `@AGENTS.md` |
+| `CLAUDE.md` 是入库的软链 | Windows 检出后变成只含 `AGENTS.md` 的文本文件，Claude 读到的是这四个字 | 改为 `@AGENTS.md` 引用行，脚本会自动迁移 |
 | Codex 项目未被信任 | `.codex/` 的 config、hooks、exec policies **整体**不加载（skills 仍加载），**静默失效**，只在 app-server 的 stderr 报一行 | `~/.codex/config.toml` 加 trusted；仓库改路径要重做 |
 | 拿 `codex doctor` 当证据 | 只报全局配置，得出反向结论 | 用 `codex-effective-config.py` |
 | 只关 `generate_memories` | `add_ad_hoc_note` 仍往仓库外写 | 三项一起关 |

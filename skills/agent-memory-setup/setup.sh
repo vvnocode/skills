@@ -17,7 +17,7 @@ usage() {
   curl -fsSL $RAW_BASE/setup.sh | bash -s -- [仓库路径] [--with-rule]
 
 幂等：已就位的项不动、只补缺；不删除、不覆盖已有内容。无法自动裁定的冲突（如 AGENTS.md 与 CLAUDE.md 都是
-普通文件且内容不同）只告警交人工，其余步骤照做。Windows 请按 SKILL.md 手工执行。
+普通文件且内容不同）只告警交人工，其余步骤照做。Windows 用同目录 setup.ps1。
 USAGE
 }
 

@@ -1,6 +1,6 @@
 # agent-memory-setup
 
-让 Claude Code、Codex、dsh、opencode 在同一仓库共用一份指令（`AGENTS.md`，`CLAUDE.md` 只含一行 `@AGENTS.md` 引用）与一份仓内记忆（`.memory/`），换工具、换机器不丢上下文。机制对照、手工步骤与陷阱见 [SKILL.md](SKILL.md)。
+让 Claude Code、Codex、dsh、opencode 在同一仓库共用一份指令（`AGENTS.md`，`CLAUDE.md` 只含一行 `@AGENTS.md` 引用）与一份仓内记忆（`.memory/`），换工具、换机器不丢上下文。机制对照、验证与陷阱见 [SKILL.md](SKILL.md)。
 
 ## 一键搭建
 

@@ -1,103 +1,116 @@
-﻿<#
-把本仓 skills/<名>/ 挂到本机各 Agent 的全局 Skill 发现根，install.sh 的 Windows 版。幂等、只增不减。
+<#
+vvnocode/skills install.ps1 -- Windows counterpart of install.sh.
+Links skills/<name>/ from this repo into every agent's global skill root on this machine. Idempotent, add-only.
 
-用法（不需要手工 clone；Windows PowerShell 5.1 或 pwsh 7 均可，不需要管理员权限）：
-  irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1 | iex                            # 全部
-  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1))) 名…   # 只装指定的
-  powershell -ExecutionPolicy Bypass -File .\install.ps1 [名…]                                            # 在本仓 clone 内运行：挂本仓，开发用
+Usage (no manual clone needed; the built-in Windows PowerShell 5.1 is enough, no admin rights required):
+  irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1 | iex                              # all skills
+  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1))) NAME...  # only the named ones
+  powershell -ExecutionPolicy Bypass -File .\install.ps1 [NAME...]     # inside a clone of this repo: link that clone (development)
 
-仓库来源按运行位置自动判定，与 install.sh 一致：
-  仓外 / 管道运行：把仓库 clone 到 $env:SKILLS_REPO_DIR（缺省 %LOCALAPPDATA%\vvnocode-skills），已存在则 git pull；
-                   重跑同一条命令即更新，链接不用重做。$env:SKILLS_REPO_URL 可改为 fork 地址。
-  本仓 clone 内  ：直接用所在 clone，不联网、不建托管副本。
+Where the repo comes from is decided by where the script runs, same as install.sh:
+  outside a clone / piped : clone the repo into $env:SKILLS_REPO_DIR (default %LOCALAPPDATA%\vvnocode-skills), or git pull
+                            if it already exists. Re-running the same command updates it; links stay valid.
+                            $env:SKILLS_REPO_URL may point at a fork.
+  inside a clone          : use that clone directly, no network, no managed copy.
 
-Windows 上用 junction 挂目录：不需要管理员权限或开发者模式，工具按目录读取时与软链等价。三处发现根同 install.sh：
-  ~\.agents\skills   跨工具 canonical 根
-  ~\.claude\skills   Claude Code 只认此处
-  ~\.codex\skills    Codex 只认此处
-已存在的普通目录或指向别处的链接只告警、不覆盖。
-本文件须保存为带 BOM 的 UTF-8：Windows PowerShell 5.1 按 -File 运行无 BOM 的文件时会按本地代码页读中文。
+Directories are mounted as junctions on Windows (no admin rights or Developer Mode needed); agents read through them
+exactly like symlinks. The three roots are the same as in install.sh:
+  ~\.agents\skills   cross-tool canonical root
+  ~\.claude\skills   the only root Claude Code scans
+  ~\.codex\skills    the only root Codex scans
+Existing plain directories and links pointing elsewhere are reported and left untouched.
+
+Encoding: this file is intentionally pure ASCII, no BOM, English messages. Verified on Windows PowerShell 5.1 (2026-09-07):
+  - with a BOM, irm keeps the BOM and "irm | iex" turns the first line into a bogus command and then executes the
+    comment block line by line as commands;
+  - without a BOM, "-File" decodes the file with the ANSI code page, and under code page 936 the decoder swallows the
+    byte after a stray lead byte (quotes and newlines included), so any non-ASCII text breaks parsing.
+Both paths hold only for pure ASCII. tests/test_install_ps1.py guards this.
 #>
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Names = @())
 
-# 整个脚本体放进一个脚本块：irm | iex 是在用户当前会话里执行，这样 $ErrorActionPreference 与临时变量不泄漏到用户会话。
-# 致命错误用 throw 而不是 exit：iex 场景下 exit 会把用户的终端窗口一起关掉。
+# The whole body lives in one script block: "irm | iex" runs inside the caller's session, so $ErrorActionPreference and
+# temporaries must not leak into it. Fatal errors use throw, never exit: under iex, exit would close the user's console.
 & {
     param([string[]]$Names)
     $ErrorActionPreference = 'Stop'
 
     $IsWin = $env:OS -eq 'Windows_NT'
+    $UserHome = if ($IsWin) { $env:USERPROFILE } else { $HOME }   # agents on Windows resolve ~/.claude etc. via USERPROFILE
     $RepoUrl = if ($env:SKILLS_REPO_URL) { $env:SKILLS_REPO_URL } else { 'https://github.com/vvnocode/skills.git' }
-    $DataHome = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path (Join-Path $HOME '.local') 'share' }   # 非 Windows 的 pwsh（跑测试）退回 XDG 位置
+    $DataHome = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path (Join-Path $UserHome '.local') 'share' }   # non-Windows pwsh (tests): XDG location
     $RepoDir = if ($env:SKILLS_REPO_DIR) { $env:SKILLS_REPO_DIR } else { Join-Path $DataHome 'vvnocode-skills' }
-    $Roots = @('.agents', '.claude', '.codex') | ForEach-Object { Join-Path (Join-Path $HOME $_) 'skills' }
-    $LinkType = if ($IsWin) { 'Junction' } else { 'SymbolicLink' }   # junction 只有 Windows 有，其他平台的 pwsh 用软链
+    $Roots = @('.agents', '.claude', '.codex') | ForEach-Object { Join-Path (Join-Path $UserHome $_) 'skills' }
+    $LinkType = if ($IsWin) { 'Junction' } else { 'SymbolicLink' }   # junctions exist only on Windows; other platforms use symlinks
     $Added = 0; $Kept = 0; $Warn = 0
 
-    # 原生命令（git）写 stderr 时，Windows PowerShell 5.1 在 Stop 偏好下可能把它当成终止错误；调用期间临时放宽，只看退出码。
-    # git 的 stdout 送到宿主，不混进函数返回值。
+    # Native commands (git) writing to stderr can be promoted to terminating errors by Windows PowerShell 5.1 under
+    # 'Stop'; relax the preference for the call and judge by exit code only. git's stdout goes to the host so the
+    # function's return value stays clean.
     function Invoke-Git {
         $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         try { & git @args | Out-Host; return $LASTEXITCODE } finally { $ErrorActionPreference = $prev }
     }
-    # 链接目标与源路径比较：去掉 \\?\ 前缀（.NET 6 起 junction 目标带它）、统一为完整路径、去尾分隔符；Windows 不分大小写
+    # Compare a link target with a source path: strip the \\?\ prefix (.NET 6+ reports junction targets with it),
+    # normalise to a full path, drop trailing separators, ignore case on Windows.
     function Get-NormalizedPath([string]$Path) {
         if ($Path.StartsWith('\\?\')) { $Path = $Path.Substring(4) }
         $Path = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
         if ($IsWin) { $Path.ToLowerInvariant() } else { $Path }
     }
 
-    # ── 仓库来源：脚本所在目录（irm | iex 时 $PSScriptRoot 为空，退回当前目录）同时有 install.ps1 与 skills\ 即视为本仓 clone ──
+    # -- Repo source: the script directory ($PSScriptRoot is empty under "irm | iex", fall back to the current directory)
+    #    counts as a clone of this repo when it holds both install.ps1 and skills\ --
     $here = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path }
     if ((Test-Path (Join-Path $here 'install.ps1') -PathType Leaf) -and (Test-Path (Join-Path $here 'skills') -PathType Container)) {
         $Repo = $here
-        Write-Host "· 来源：本仓 clone $Repo"
+        Write-Host "* source: local clone $Repo"
     } else {
-        if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw '✗ 需要 git' }
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'x git is required' }
         if (Test-Path (Join-Path $RepoDir '.git') -PathType Container) {
-            # 已有托管副本：快进更新；拉不动（本地改动、断网）就沿用现有版本，不中断安装
+            # Managed copy exists: fast-forward it; if that fails (local edits, no network) keep what is there and go on
             if ((Invoke-Git -C $RepoDir pull -q --ff-only) -eq 0) {
-                Write-Host "· 来源：托管副本 ${RepoDir}（已更新）"
+                Write-Host "* source: managed clone $RepoDir (updated)"
             } else {
-                Write-Host "⚠ $RepoDir 更新失败，沿用现有版本（本地有改动或网络不通）"; $Warn++
+                Write-Host "! $RepoDir could not be updated, keeping the current version (local changes or no network)"; $Warn++
             }
         } elseif (Test-Path $RepoDir) {
-            throw "✗ $RepoDir 已存在但不是 git 仓库，请移走后重试"
+            throw "x $RepoDir exists but is not a git repository; move it away and retry"
         } else {
             New-Item -ItemType Directory -Force (Split-Path $RepoDir -Parent) | Out-Null
-            if ((Invoke-Git clone -q $RepoUrl $RepoDir) -ne 0) { throw "✗ clone 失败：$RepoUrl" }
-            Write-Host "· 来源：已 clone $RepoUrl 到 $RepoDir"
+            if ((Invoke-Git clone -q $RepoUrl $RepoDir) -ne 0) { throw "x clone failed: $RepoUrl" }
+            Write-Host "* source: cloned $RepoUrl into $RepoDir"
         }
         $Repo = (Resolve-Path $RepoDir).Path
     }
 
-    # ── 要安装的 skill 列表：显式传参或 skills\ 下全部含 SKILL.md 的目录 ──
+    # -- Skills to install: the names given, or every directory under skills\ that has a SKILL.md --
     $SkillsDir = Join-Path $Repo 'skills'
     if ($Names.Count -eq 0) {
         $Names = @(Get-ChildItem $SkillsDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'SKILL.md') -PathType Leaf } | ForEach-Object { $_.Name })
     }
-    if ($Names.Count -eq 0) { throw '✗ skills/ 下没有可安装的 skill' }
+    if ($Names.Count -eq 0) { throw 'x nothing to install under skills/' }
 
-    # ── 挂到三处发现根 ──
+    # -- Link into the three roots --
     foreach ($root in $Roots) {
         New-Item -ItemType Directory -Force $root | Out-Null
         foreach ($name in $Names) {
             $src = Join-Path $SkillsDir $name
-            if (-not (Test-Path (Join-Path $src 'SKILL.md') -PathType Leaf)) { Write-Host "⚠ 跳过 ${name}：skills/$name/SKILL.md 不存在"; $Warn++; continue }
+            if (-not (Test-Path (Join-Path $src 'SKILL.md') -PathType Leaf)) { Write-Host "! skipped ${name}: skills/$name/SKILL.md not found"; $Warn++; continue }
             $link = Join-Path $root $name
             $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
             if ($item -and $item.LinkType) {
-                # 已是链接：指向本仓即就位，指向别处只告警（可能是另一份 canonical，不代做切换）
+                # Already a link: pointing at this repo means done; pointing elsewhere is only reported (may be another canonical copy)
                 $target = [string](@($item.Target)[0])
                 if ((Get-NormalizedPath $target) -eq (Get-NormalizedPath $src)) { $Kept++ }
-                else { Write-Host "⚠ $link 已指向 ${target}，未改动"; $Warn++ }
+                else { Write-Host "! $link already points to ${target}, left unchanged"; $Warn++ }
             } elseif ($item) {
-                Write-Host "⚠ $link 是普通目录/文件，未改动（如需改为链接请先自行移走）"; $Warn++
+                Write-Host "! $link is a plain directory or file, left unchanged (move it away to replace it with a link)"; $Warn++
             } else {
                 New-Item -ItemType $LinkType -Path $link -Value $src | Out-Null
                 $Added++
             }
         }
     }
-    Write-Host "· 安装完成：新建 $Added 条，已就位 $Kept 条，告警 $Warn 条（发现根：$($Roots -join ' ')）"
+    Write-Host "* done: added $Added, kept $Kept, warnings $Warn (roots: $($Roots -join ' '))"
 } $Names

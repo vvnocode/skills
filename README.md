@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/vvnocode/skills/main/install.sh | b
 - 卸载：删掉三处发现根下的对应软链，再删 `~/.local/share/vvnocode-skills`。
 - 开发：在本仓 clone 内运行 `./install.sh [skill名…]`，软链直接指向该 clone，不联网、不建托管副本。
 
-Windows 用同名的 `install.ps1`，Windows PowerShell 5.1 与 pwsh 7 均可，不需要管理员权限（目录以 junction 挂载）：
+Windows 用同名的 `install.ps1`，系统自带的 Windows PowerShell 5.1 即可，不需要管理员权限（目录以 junction 挂载）：
 
 ```powershell
 irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1 | iex
@@ -34,7 +34,7 @@ irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1 | iex
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1))) agent-memory-setup
 ```
 
-托管 clone 在 `%LOCALAPPDATA%\vvnocode-skills`，环境变量 `SKILLS_REPO_DIR` / `SKILLS_REPO_URL` 同样有效；在本仓 clone 内运行 `powershell -ExecutionPolicy Bypass -File .\install.ps1`。更新与卸载同上。
+托管 clone 在 `%LOCALAPPDATA%\vvnocode-skills`，环境变量 `SKILLS_REPO_DIR` / `SKILLS_REPO_URL` 同样有效；在本仓 clone 内运行 `powershell -ExecutionPolicy Bypass -File .\install.ps1`。更新与卸载同上。脚本全文 ASCII、提示为英文：Windows PowerShell 5.1 的 `irm` 不去 BOM，带 BOM 会让 `irm | iex` 把首行当命令并把注释逐行执行；不带 BOM 时按 `-File` 运行又会用本地代码页解码，936 下中文会吞掉引号和换行导致解析失败，两条路径同时成立只有纯 ASCII 一种写法（2026-09-07 在 Windows 10 加 PowerShell 5.1 实测）。
 
 带一键脚本的 skill（如 `setup.sh`）同样不需要 clone，用法见各自目录下的 `README.md`；`setup.sh` 目前只有 bash 版，Windows 按其 SKILL.md 的手工步骤执行。
 
@@ -57,5 +57,5 @@ python3 -m unittest discover -s tests -v
 - 新 skill 放 `skills/<名>/SKILL.md`，frontmatter 含 `name` 与 `description`，description 写触发场景而不是功能罗列。
 - 带脚本的 skill 在 `tests/` 里放离线回归测试，在临时目录里跑真实脚本，不触碰用户主目录。
 - 带一键脚本的 skill 在自己目录放 `README.md`，写 `curl … | bash` 直接执行的用法；脚本要能在管道下运行，不依赖 `$0` 指向磁盘上的文件；变量后紧跟中文标点写 `${VAR}`，macOS 自带 bash 3.2 在 UTF-8 locale 下会把 `$VAR（` 的首字节并入变量名。
-- 需要 Windows 时另放同名 `.ps1`，行为与 `.sh` 一致、共用同一套测试用例，`irm … | iex` 可运行；文件存为带 BOM 的 UTF-8。
+- 需要 Windows 时另放同名 `.ps1`，行为与 `.sh` 一致、共用同一套测试用例，`irm … | iex` 可运行；`.ps1` 全文 ASCII、无 BOM、英文提示，原因见安装节。
 - 分支：`main` 为长期分支，改动在短期分支完成后 `--no-ff` 合回。

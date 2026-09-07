@@ -23,11 +23,33 @@ INSTALL = ROOT / "install.sh"
 INSTALL_PS1 = ROOT / "install.ps1"
 # 三处全局发现根，相对 HOME
 DISCOVERY_ROOTS = (".agents/skills", ".claude/skills", ".codex/skills")
-GIT_IDENTITY = ["-c", "user.name=test", "-c", "user.email=test@example.com"]
+# 夹具里的 git：固定身份；关 autocrlf，否则 Windows 上 git add 会对每个脚本报 LF→CRLF 警告，混进测试输出
+GIT_CONFIG = ["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "core.autocrlf=false"]
+
+
+def link_target(path: Path) -> str | None:
+    """软链或 junction 的目标；不是链接返回 None。Windows 上 os.readlink 对 junction 返回带 \\\\?\\ 前缀的路径，去掉前缀。"""
+    try:
+        target = os.readlink(path)
+    except OSError:
+        return None
+    return target[4:] if target.startswith("\\\\?\\") else target
+
+
+def make_link(link: Path, target: Path) -> None:
+    """建一条指向 target 的目录链接：Windows 用 junction（软链需要开发者模式或管理员），其他平台用软链。"""
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)], check=True, capture_output=True)
+    else:
+        link.symlink_to(target)
 
 
 class InstallTest(unittest.TestCase):
     """install.sh 行为契约。"""
+
+    # 输出里的告警标记与「跳过未知名」文案；install.ps1 全 ASCII，子类覆盖
+    WARN_MARK = "⚠"
+    SKIP_TEXT = "⚠ 跳过 nope"
 
     def setUp(self) -> None:
         """临时 HOME、临时远端仓、临时托管副本目录、仓库之外的工作目录。"""
@@ -60,19 +82,22 @@ class InstallTest(unittest.TestCase):
         (skill / "SKILL.md").write_text(f"---\nname: {name}\ndescription: test\n---\n")
 
     def commit(self, msg: str) -> None:
-        subprocess.run(["git", "add", "-A"], cwd=self.origin, check=True)
-        subprocess.run(["git", *GIT_IDENTITY, "commit", "-q", "-m", msg], cwd=self.origin, check=True)
+        subprocess.run(["git", *GIT_CONFIG, "add", "-A"], cwd=self.origin, check=True)
+        subprocess.run(["git", *GIT_CONFIG, "commit", "-q", "-m", msg], cwd=self.origin, check=True)
 
     # ── 运行 ──
     def env(self) -> dict[str, str]:
-        return {
+        env = {
             **os.environ,
-            "HOME": str(self.home),
-            # 显式 UTF-8：macOS 自带 bash 3.2 只在 UTF-8 locale 下走多字节解析路径，脚本里的中文提示必须在此路径下也正确
-            "LC_ALL": "en_US.UTF-8",
-            "SKILLS_REPO_URL": f"file://{self.origin}",
+            "HOME": str(self.home),           # bash 与非 Windows 的 pwsh 用它
+            "USERPROFILE": str(self.home),    # Windows 上 install.ps1 用它
+            "SKILLS_REPO_URL": self.origin.as_uri(),
             "SKILLS_REPO_DIR": str(self.src),
         }
+        if os.name != "nt":
+            # 显式 UTF-8：macOS 自带 bash 3.2 只在 UTF-8 locale 下走多字节解析路径，脚本里的中文提示必须在此路径下也正确
+            env["LC_ALL"] = "en_US.UTF-8"
+        return env
 
     def run_piped(self, *args: str) -> subprocess.CompletedProcess:
         """模拟 `curl ... | bash -s -- 参数`：脚本从 stdin 进入，$0 是 bash，cwd 在仓库之外。"""
@@ -87,11 +112,12 @@ class InstallTest(unittest.TestCase):
         return self.home / root / name
 
     def assert_linked(self, name: str, target: Path) -> None:
-        """三处发现根都有指向 target 的软链。"""
+        """三处发现根都有指向 target 的链接（软链或 junction）。Windows 路径不分大小写，按 normcase 比。"""
         for root in DISCOVERY_ROOTS:
             link = self.link(root, name)
-            self.assertTrue(link.is_symlink(), f"{link} 应为软链")
-            self.assertEqual(os.readlink(link), str(target))
+            actual = link_target(link)
+            self.assertIsNotNone(actual, f"{link} 应为链接")
+            self.assertEqual(os.path.normcase(actual), os.path.normcase(str(target)))
 
     # ── 用例 ──
     def test_piped_bootstraps_clone_and_links(self) -> None:
@@ -140,17 +166,18 @@ class InstallTest(unittest.TestCase):
         other = self.home / "other"
         other.mkdir()
         (self.home / ".claude" / "skills").mkdir(parents=True)
-        self.link(".claude/skills", "alpha").symlink_to(other)
+        make_link(self.link(".claude/skills", "alpha"), other)
         proc = self.run_piped()
-        self.assertEqual(os.readlink(self.link(".claude/skills", "alpha")), str(other))
-        self.assertIn("⚠", proc.stdout)
-        self.assertEqual(os.readlink(self.link(".agents/skills", "alpha")), str(self.src / "skills" / "alpha"))
+        self.assertEqual(os.path.normcase(link_target(self.link(".claude/skills", "alpha"))), os.path.normcase(str(other)))
+        self.assertIn(self.WARN_MARK, proc.stdout)
+        self.assertEqual(os.path.normcase(link_target(self.link(".agents/skills", "alpha"))),
+                         os.path.normcase(str(self.src / "skills" / "alpha")))
 
     def test_unknown_name_warns_and_continues(self) -> None:
         """传了不存在的 skill 名：告警跳过，其余照装，退出码为 0。"""
         self.make_origin("alpha")
         proc = self.run_piped("alpha", "nope")
-        self.assertIn("⚠ 跳过 nope", proc.stdout)
+        self.assertIn(self.SKIP_TEXT, proc.stdout)
         self.assert_linked("alpha", self.src / "skills" / "alpha")
 
 

@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = ROOT / "install.sh"
+INSTALL_PS1 = ROOT / "install.ps1"
 # 三处全局发现根，相对 HOME
 DISCOVERY_ROOTS = (".agents/skills", ".claude/skills", ".codex/skills")
 GIT_IDENTITY = ["-c", "user.name=test", "-c", "user.email=test@example.com"]
@@ -47,7 +48,8 @@ class InstallTest(unittest.TestCase):
         """建一个形如本仓的远端：install.sh + skills/<名>/SKILL.md，提交到 main。"""
         self.origin.mkdir()
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.origin, check=True)
-        shutil.copy(INSTALL, self.origin / "install.sh")
+        for script in (INSTALL, INSTALL_PS1):
+            shutil.copy(script, self.origin / script.name)
         for name in names:
             self.write_skill(name)
         self.commit("init")

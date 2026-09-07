@@ -8,6 +8,7 @@
 - 只有 CLAUDE.md 的仓库：改名为 AGENTS.md 并建软链，正文不丢
 - AGENTS.md 与 CLAUDE.md 都是普通文件且内容不同：不动任何一个，只告警，其余步骤照做
 - --with-rule：才往 AGENTS.md 追加「项目记忆」节，且重跑不重复追加
+- 管道运行（curl | bash）：--help 不依赖磁盘上的脚本文件；收尾的 Codex 探针提示给出 curl 命令
 """
 from __future__ import annotations
 
@@ -45,7 +46,7 @@ class AgentMemorySetupTest(unittest.TestCase):
 
     def run_setup(self, *args: str) -> subprocess.CompletedProcess:
         """在临时仓库里跑 setup.sh，HOME 指向临时目录以防误写用户主目录。"""
-        env = {**os.environ, "HOME": self.temp_dir.name}
+        env = {**os.environ, "HOME": self.temp_dir.name, "LC_ALL": "en_US.UTF-8"}   # UTF-8：覆盖 bash 3.2 的多字节解析路径
         proc = subprocess.run(
             ["bash", str(SETUP), *args], cwd=self.repo, capture_output=True, text=True, env=env, check=False,
         )
@@ -117,6 +118,32 @@ class AgentMemorySetupTest(unittest.TestCase):
         self.assertIn("MEMORY.md", agents)
         self.run_setup("--with-rule")
         self.assertEqual(agents, (self.repo / "AGENTS.md").read_text())
+
+    def run_piped(self, *args: str) -> subprocess.CompletedProcess:
+        """模拟 `curl ... | bash -s -- 参数`：脚本从 stdin 进入，$0 是 bash，磁盘上没有脚本文件。"""
+        env = {**os.environ, "HOME": self.temp_dir.name, "LC_ALL": "en_US.UTF-8"}
+        proc = subprocess.run(
+            ["bash", "-s", "--", *args], input=SETUP.read_text(encoding="utf-8"),
+            cwd=self.repo, capture_output=True, text=True, env=env, check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        return proc
+
+    def test_piped_help_works_without_script_file(self) -> None:
+        """curl | bash -s -- --help：脚本不在磁盘上，帮助文本仍能打印。"""
+        proc = self.run_piped("--help")
+        self.assertIn("用法", proc.stdout)
+        self.assertIn("--with-rule", proc.stdout)
+
+    def test_probe_hint_matches_how_script_was_run(self) -> None:
+        """收尾的 Codex 验证提示：本地有探针就给本地路径，管道运行时给可直接执行的 curl 命令。"""
+        local = self.run_setup()
+        self.assertIn(str(SETUP.parent / "codex-effective-config.py"), local.stdout)
+        piped = self.run_piped()
+        self.assertIn(
+            "https://raw.githubusercontent.com/vvnocode/skills/main/skills/agent-memory-setup/codex-effective-config.py",
+            piped.stdout,
+        )
 
 
 if __name__ == "__main__":

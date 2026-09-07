@@ -1,21 +1,34 @@
 #!/usr/bin/env bash
 # agent-memory-setup：让 Claude Code / Codex / dsh / opencode 在同一仓库共用一份指令（AGENTS.md）与一份仓内记忆（.memory/）。
 #
-# 用法：setup.sh [仓库路径] [--with-rule]
-#   仓库路径缺省为当前所在 git 仓库根。--with-rule 才往 AGENTS.md 追加「项目记忆」节：跨工具全局规则
-#   （如 vvnocode/claude.md 的「项目记忆」节）已经约束「仓内 .memory/ 存在时怎么读写」，装了它的机器不必每仓再写一份；
-#   只给没有全局规则的协作者用的仓库才需要 --with-rule。
-#
-# 幂等：已就位的项不动、只补缺；不删除、不覆盖已有内容。无法自动裁定的冲突（如 AGENTS.md 与 CLAUDE.md 都是
-# 普通文件且内容不同）只告警交人工，其余步骤照做。Windows 请按 SKILL.md 手工执行。
+# 用法见 --help。不需要 clone 本仓，可直接 curl | bash 执行；也可从已安装的 skill 目录运行。
 set -euo pipefail
 
+RAW_BASE="https://raw.githubusercontent.com/vvnocode/skills/main/skills/agent-memory-setup"
+usage() {
+    cat <<USAGE
+用法：setup.sh [仓库路径] [--with-rule]
+
+  仓库路径     缺省为当前所在 git 仓库根
+  --with-rule  往 AGENTS.md 追加「项目记忆」节。跨工具全局规则（如 vvnocode/claude.md 的「项目记忆」节）已经约束
+               「仓内 .memory/ 存在时怎么读写」，装了它的机器不必每仓再写一份；只给没有全局规则的协作者用的仓库才需要。
+
+不需要 clone 本仓，在目标仓库目录下直接执行：
+  curl -fsSL $RAW_BASE/setup.sh | bash -s -- [仓库路径] [--with-rule]
+
+幂等：已就位的项不动、只补缺；不删除、不覆盖已有内容。无法自动裁定的冲突（如 AGENTS.md 与 CLAUDE.md 都是
+普通文件且内容不同）只告警交人工，其余步骤照做。Windows 请按 SKILL.md 手工执行。
+USAGE
+}
+
+# 脚本所在目录须在 cd 之前解析：$0 可能是相对路径；管道运行时 $0 是 bash，解析结果无意义，后面按文件是否存在兜底
+SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P || true)
 WRITE_RULE=0
 ROOT=""
 for arg in "$@"; do
     case "$arg" in
         --with-rule) WRITE_RULE=1 ;;
-        -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) usage; exit 0 ;;
         *) ROOT="$arg" ;;
     esac
 done
@@ -163,7 +176,12 @@ echo "trust_level = \"trusted\""
 echo
 echo "── 验证 ──"
 echo "Claude：在本目录开 Claude Code，问「不用工具，复述项目指令里关于记忆写入位置的那条」"
-echo "Codex ：确认 trusted 后运行 $(dirname "$0")/codex-effective-config.py \"$ROOT\""
+PROBE="$SCRIPT_DIR/codex-effective-config.py"
+if [ -f "$PROBE" ]; then
+    echo "Codex ：确认 trusted 后运行 $PROBE \"$ROOT\""
+else
+    echo "Codex ：确认 trusted 后运行 curl -fsSL $RAW_BASE/codex-effective-config.py | python3 - \"$ROOT\""
+fi
 echo "dsh / opencode：在本目录开会话，问同一问题；它们读 AGENTS.md，答得出即生效"
 [ "$WARN" -gt 0 ] && echo && echo "⚠ 共 $WARN 条告警，见上文，需人工处理"
 exit 0

@@ -70,6 +70,6 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-
 - 把 `autoMemoryDirectory` 写进入库的 `settings.json`：被忽略，且带上了本机绝对路径。
 - 在未被信任的临时目录里测 Codex 项目配置，得出「项目级配置无效」的错误结论。
 
-## 参考实现
+## 与 llm-wiki 的关系
 
-llm-wiki 模板（个人知识工作台）的 `scripts/bootstrap.sh` 是这套做法的完整脚本化版本，另含 worktree 共享钩子与 Skill 三处全局挂载；机制说明在其 `docs/workflows/记忆与多Agent.md`。
+[llm-wiki](https://github.com/vvnocode/llm-wiki)（个人知识工作台）v0.3.0 起的 `bootstrap.sh` / `bootstrap.ps1` 直接调用本 skill 的 setup 脚本完成接线（未装先装到三处发现根），自己只保留 worktree 共享钩子与 Skill 全局挂载等工作台特有步骤。两者分工：本 skill 管**接线**（一份指令、一份仓内记忆、各工具指过来），llm-wiki 管**知识**（跨项目的机制、决策、案例）。内容层面 `.memory/` 记做事方式（偏好、纠正、约束、指针），wiki 记事实结论（对象、机制、决策、案例），判据与机械规则见 llm-wiki 的 `docs/schemas/分区与共享.md`「与 `.memory/` 的分工」。

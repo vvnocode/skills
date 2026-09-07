@@ -113,4 +113,12 @@ param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Names = @())
         }
     }
     Write-Host "* done: added $Added, kept $Kept, warnings $Warn (roots: $($Roots -join ' '))"
+
+    # -- Skills that ship a setup script are only announced, never run: a setup acts on one specific repo,
+    #    installing skills acts on the whole machine --
+    foreach ($name in $Names) {
+        if (-not (Test-Path (Join-Path (Join-Path $SkillsDir $name) 'setup.ps1') -PathType Leaf)) { continue }
+        $setup = Join-Path (Join-Path $Roots[0] $name) 'setup.ps1'
+        Write-Host "* $name ships setup.ps1: inside the target repo run: powershell -ExecutionPolicy Bypass -File `"$setup`" [args]; see skills/$name/README.md"
+    }
 } $Names

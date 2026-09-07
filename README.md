@@ -36,13 +36,13 @@ irm https://raw.githubusercontent.com/vvnocode/skills/main/install.ps1 | iex
 
 托管 clone 在 `%LOCALAPPDATA%\vvnocode-skills`，环境变量 `SKILLS_REPO_DIR` / `SKILLS_REPO_URL` 同样有效；在本仓 clone 内运行 `powershell -ExecutionPolicy Bypass -File .\install.ps1`。更新与卸载同上。脚本全文 ASCII、提示为英文：Windows PowerShell 5.1 的 `irm` 不去 BOM，带 BOM 会让 `irm | iex` 把首行当命令并把注释逐行执行；不带 BOM 时按 `-File` 运行又会用本地代码页解码，936 下中文会吞掉引号和换行导致解析失败，两条路径同时成立只有纯 ASCII 一种写法（2026-09-07 在 Windows 10 加 PowerShell 5.1 实测）。
 
-带一键脚本的 skill（如 `setup.sh`）同样不需要 clone，用法见各自目录下的 `README.md`；`setup.sh` 目前只有 bash 版，Windows 按其 SKILL.md 的手工步骤执行。
+带一键脚本的 skill（如 `setup.sh` / `setup.ps1`）同样不需要 clone，用法见各自目录下的 `README.md`。这类脚本作用于某个具体仓库，与装 skill 不是一回事，`install.sh` / `install.ps1` 只在装完后列出哪些 skill 自带 setup 及其挂载路径，不会代跑。
 
 ## Skill 列表
 
 | Skill | 用途 |
 |---|---|
-| [agent-memory-setup](skills/agent-memory-setup/SKILL.md) | 让 Claude Code、Codex、dsh、opencode 在同一仓库共用一份指令（`AGENTS.md`）与一份仓内记忆（`.memory/`），换工具、换机器不丢上下文。附一键 `setup.sh` 与 Codex 有效配置探针，curl 直接执行的用法见 [README](skills/agent-memory-setup/README.md)。 |
+| [agent-memory-setup](skills/agent-memory-setup/SKILL.md) | 让 Claude Code、Codex、dsh、opencode 在同一仓库共用一份指令（`AGENTS.md`）与一份仓内记忆（`.memory/`），换工具、换机器不丢上下文。附一键 `setup.sh` / `setup.ps1` 与 Codex 有效配置探针，curl / irm 直接执行的用法见 [README](skills/agent-memory-setup/README.md)。 |
 
 ## 测试
 

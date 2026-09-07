@@ -8,6 +8,7 @@
 - 在本仓 clone 内直接运行：不 clone、不建托管副本，软链直接指向本仓
 - 发现根已有指向别处的同名链接：只告警不覆盖
 - 传了不存在的 skill 名：告警跳过，其余照装
+- 自带 setup 脚本的 skill：装完后打印提示（含已挂载路径），没有的不打印
 """
 from __future__ import annotations
 
@@ -50,6 +51,8 @@ class InstallTest(unittest.TestCase):
     # 输出里的告警标记与「跳过未知名」文案；install.ps1 全 ASCII，子类覆盖
     WARN_MARK = "⚠"
     SKIP_TEXT = "⚠ 跳过 nope"
+    SETUP_FILE = "setup.sh"          # 该脚本会检测并提示的 setup 文件名
+    SETUP_HINT = "自带 setup.sh"      # 提示行里的固定文字
 
     def setUp(self) -> None:
         """临时 HOME、临时远端仓、临时托管副本目录、仓库之外的工作目录。"""
@@ -76,10 +79,12 @@ class InstallTest(unittest.TestCase):
             self.write_skill(name)
         self.commit("init")
 
-    def write_skill(self, name: str) -> None:
+    def write_skill(self, name: str, with_setup: bool = False) -> None:
         skill = self.origin / "skills" / name
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text(f"---\nname: {name}\ndescription: test\n---\n")
+        if with_setup:
+            (skill / self.SETUP_FILE).write_text("# placeholder\n")
 
     def commit(self, msg: str) -> None:
         subprocess.run(["git", *GIT_CONFIG, "add", "-A"], cwd=self.origin, check=True)
@@ -179,6 +184,18 @@ class InstallTest(unittest.TestCase):
         proc = self.run_piped("alpha", "nope")
         self.assertIn(self.SKIP_TEXT, proc.stdout)
         self.assert_linked("alpha", self.src / "skills" / "alpha")
+
+    def test_setup_hint_only_for_skills_that_ship_one(self) -> None:
+        """装完后只对自带 setup 脚本的 skill 打印提示，提示里带 canonical 根下的挂载路径。"""
+        self.make_origin("alpha")
+        self.write_skill("beta", with_setup=True)
+        self.commit("add beta with setup")
+        proc = self.run_piped()
+        hint = [l for l in proc.stdout.splitlines() if self.SETUP_HINT in l]
+        self.assertEqual(len(hint), 1, proc.stdout)
+        self.assertIn("beta", hint[0])
+        self.assertIn(os.path.normcase(str(self.link(".agents/skills", "beta"))), os.path.normcase(hint[0]))
+        self.assertNotIn("alpha", hint[0])
 
 
 if __name__ == "__main__":

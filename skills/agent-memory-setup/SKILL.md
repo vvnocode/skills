@@ -1,6 +1,6 @@
 ---
 name: agent-memory-setup
-description: Use when a repo is worked on by more than one coding agent (Claude Code, Codex, dsh, opencode …) and their instructions or memory sit in separate places — AGENTS.md is present but Claude ignores it, agent memory lands in the home directory, switching tools loses accumulated context, or a new machine needs the same setup reproduced in one step.
+description: Use when a repo is worked on by more than one coding agent (Claude Code, Codex, dsh, opencode …) and their instructions or memory sit in separate places — AGENTS.md is present but Claude ignores it, agent memory lands in the home directory, switching tools loses accumulated context, setup.sh was run but one tool still ignores the shared instructions or memory, or a new machine needs the same setup reproduced in one step.
 ---
 
 # 多 Agent 共用项目指令与仓内记忆
@@ -8,6 +8,8 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 ## 核心
 
 一份指令、一份仓库内记忆，每个工具都指向它。做法是四件事：`AGENTS.md` 当正本、`CLAUDE.md` 只放一行 `@AGENTS.md` 引用；记忆放仓内 `.memory/` 随代码提交；能改记忆目录的工具用配置指过来，不能改的把自带记忆关掉；再把记忆读写规则写进 `AGENTS.md`。**各工具强度不对等**：Claude 可以用配置硬指定记忆目录；Codex 的记忆目录写死在 `$CODEX_HOME/memories`，只能关掉再靠指令约束；dsh 与 opencode 没有自带的跨会话记忆，全靠指令。
+
+搭建本身由 `setup.sh` / `setup.ps1` 一次做完。本 skill 的主体是脚本之后的部分：怎么验证各工具真的生效、生效不了通常卡在哪、以及脚本写下的每样东西为什么是那个形状。
 
 ## 机制对照
 
@@ -20,67 +22,23 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 | 项目级配置 | `.claude/settings.local.json` | `.codex/config.toml`（**需项目被信任**） | 无 | 无需 |
 | 全局 Skill 发现根 | `~/.claude/skills/` | `~/.codex/skills/` | `~/.agents/skills/` | `~/.config/opencode/skills/`、`~/.claude/skills/`、`~/.agents/skills/` |
 
-「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」四处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/claude.md](https://github.com/vvnocode/claude.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（步骤 4，`setup.sh --with-rule`）。
+「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」四处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/claude.md](https://github.com/vvnocode/claude.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（`setup.sh --with-rule`，见「脚本写下的四样东西与理由」第 4 条）。
 
 ## 一键执行
 
-macOS / Linux：
+macOS / Linux，在目标仓库根目录运行或传路径：
 
 ```bash
 ./setup.sh [仓库路径] [--with-rule]
 ```
 
-Windows（系统自带的 PowerShell 5.1 即可）：
+Windows，系统自带的 PowerShell 5.1 即可：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.agents\skills\agent-memory-setup\setup.ps1" [仓库路径] [-WithRule]
 ```
 
-在目标仓库根目录运行（或传路径）。幂等，只补缺不覆盖；不能自动裁定的冲突只告警。默认不改 `AGENTS.md`，只有 `--with-rule` / `-WithRule` 才追加「项目记忆」节。两个脚本写入仓库的文件逐字节一致。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），然后按「验证」节逐工具确认。不装 skill、直接用 curl / irm 执行的写法见同目录 README.md。
-
-## 手工步骤（脚本做的事）
-
-**1. 指令合一。** 保留 `AGENTS.md` 为唯一正本，`CLAUDE.md` 只写一行引用：
-
-```bash
-printf '@AGENTS.md\n' > CLAUDE.md
-```
-
-这是 Claude Code 的导入语法：相对路径按 CLAUDE.md 所在目录解析，仓库内的引用不弹确认框，worktree 里照样有效。不要用软链：入库的软链在 Windows 默认 `core.symlinks=false` 下检出后是只含 `AGENTS.md` 四个字的文本文件，Claude 读到的就是这四个字。`setup.sh` / `setup.ps1` 会把旧做法留下的软链自动改为引用行。
-
-**2. Claude 记忆改到仓内。** 建 `.memory/MEMORY.md`，写 `.claude/settings.local.json`（**不要写入库的 `settings.json`**，官方文档标明该项在项目级 settings 里会因安全被忽略）：
-
-```json
-{ "autoMemoryDirectory": "<仓库绝对路径>/.memory" }
-```
-
-把 `.claude/settings.local.json` 加进 `.gitignore`。
-
-**3. 关掉 Codex 自带记忆。** `.codex/config.toml`：
-
-```toml
-[memories]
-generate_memories = false   # 本目录会话不再沉淀到仓库外
-use_memories     = false    # 不再注入仓库外的旧副本
-dedicated_tools  = false    # 收掉 list/read/search/add_ad_hoc_note
-```
-
-然后在 `~/.codex/config.toml` 标记信任，否则整个 `.codex/` 静默不加载：
-
-```toml
-[projects."<仓库绝对路径>"]
-trust_level = "trusted"
-```
-
-**4. 记忆规则进规则文件。** 优先写在跨工具全局规则里（一次生效所有仓）；没有全局规则时写进仓内 `AGENTS.md`（`setup.sh --with-rule`）。内容：记忆一律存 `.memory/`，随代码提交；会话开始先读 `MEMORY.md` 索引；每条记忆单独一个 `.md`，frontmatter 含 `name` / `description` / `metadata.type`（`user` | `feedback` | `project` | `reference`）；写入前先查已有条目。`setup.sh` 追加的原文见脚本第 6 步。
-
-## worktree 里的会话
-
-`git worktree add` 只检出入库文件。`.claude/settings.local.json` 被 gitignore，在 worktree 里不存在，Claude 的记忆目录会退回工具默认位置，仓内记忆整份不可见。处理：在 worktree 里把根工作区那份软链过来，或装一个 post-checkout 钩子自动做。
-
-```bash
-ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.local.json
-```
+参数含义、不装 skill 直接用 curl / irm 执行的写法见同目录 README.md。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），然后按下一节逐工具验证。
 
 ## 验证
 
@@ -101,7 +59,7 @@ ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.loc
 | **Codex 后台记忆管线只读全局配置** | 项目级 `generate_memories = false` **挡不住**它按会话更新时间重新提取、重建 `~/.codex/memories` | 要彻底停只能改全局，代价是所有项目一起停；否则接受仓库外持续产生副本，本项目 `use_memories = false` 读不回来即可 |
 | 去清 `~/.codex/memories` | 数据流是 `memories_1.sqlite` 的 `stage1_outputs` → `raw_memories.md` → `MEMORY.md` 等五处，只删 `MEMORY.md` 无效；清了也会被重建 | 不要花时间清 |
 | 在裸 worktree 里开 Claude 会话 | `settings.local.json` 缺失，记忆目录退回默认位置 | 见「worktree 里的会话」 |
-| 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 步骤 4 不能省：全局规则或 `--with-rule` 二选一 |
+| 规则只写在 Claude 那侧 | Codex / dsh / opencode 不知道 `.memory/` 存在，各写各的或不写 | 第 4 条不能省：全局规则或 `--with-rule` 二选一 |
 | 全局规则只挂了部分工具 | 漏挂的工具（常见是 opencode 的 `~/.config/opencode/AGENTS.md`）永远读不到规则 | 按上表「用户级指令」四处逐一核对软链 |
 
 ## 常见错误
@@ -111,6 +69,39 @@ ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.loc
 - 自己发明一个 `MEMORY.md` 约定但没设 `autoMemoryDirectory`：Claude 的自动记忆仍写在仓库外。
 - 把 `autoMemoryDirectory` 写进入库的 `settings.json`：被忽略，且带上了本机绝对路径。
 - 在未被信任的临时目录里测 Codex 项目配置，得出「项目级配置无效」的错误结论。
+
+## worktree 里的会话
+
+`git worktree add` 只检出入库文件。`.claude/settings.local.json` 被 gitignore，在 worktree 里不存在，Claude 的记忆目录会退回工具默认位置，仓内记忆整份不可见。处理：在 worktree 里把根工作区那份软链过来，或装一个 post-checkout 钩子自动做。
+
+```bash
+ln -s <根工作区>/.claude/settings.local.json <worktree>/.claude/settings.local.json
+```
+
+## 脚本写下的四样东西与理由
+
+不要手工重做这些步骤，跑脚本。本节用于核对脚本产物、处理脚本只告警不动的冲突、以及后续改动时不推翻下面的决定；各项的失效方式见「陷阱」，这里不重复。
+
+**1. `AGENTS.md` 是正本，`CLAUDE.md` 只有一行 `@AGENTS.md`。** 这是 Claude Code 的导入语法：相对路径按 CLAUDE.md 所在目录解析，仓库内引用不弹确认框，worktree 里照样有效；不用软链，入库的软链在 Windows 检出后是文本文件。两边都是普通文件且内容不同时脚本只告警，要人工把 `CLAUDE.md` 并入 `AGENTS.md` 再改为引用行。
+
+**2. `.memory/MEMORY.md` 加 `.claude/settings.local.json`，后者由脚本加进 `.gitignore`。**
+
+```json
+{ "autoMemoryDirectory": "<仓库绝对路径>/.memory" }
+```
+
+不写入库的 `settings.json`：该项在项目级 settings 里会因安全被忽略，且会带上本机绝对路径。
+
+**3. `.codex/config.toml` 三项一起关。** 只有项目被信任才加载；信任片段 `[projects."<仓库绝对路径>"]` 下 `trust_level = "trusted"` 由脚本收尾按实际路径打印，要人工追加到 `~/.codex/config.toml`。
+
+```toml
+[memories]
+generate_memories = false   # 本目录会话不再沉淀到仓库外
+use_memories     = false    # 不再注入仓库外的旧副本
+dedicated_tools  = false    # 收掉 list/read/search/add_ad_hoc_note
+```
+
+**4. 「项目记忆」节进 `AGENTS.md`，仅 `--with-rule`。** 有跨工具全局规则的机器不需要，没有全局规则的仓库才加；追加原文见脚本第 6 步。
 
 ## 参考实现
 

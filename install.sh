@@ -7,8 +7,10 @@
 #   ./install.sh [名…]                                                    # 在本仓 clone 内运行：软链指向本仓，开发用
 #
 # 仓库来源按运行位置自动判定：
-#   仓外 / 管道运行：把仓库 clone 到 $SKILLS_REPO_DIR（缺省 ${XDG_DATA_HOME:-~/.local/share}/vvnocode-skills），
+#   仓外 / 管道运行：把仓库 clone 到 $SKILLS_REPO_DIR（缺省 ~/.vvnocode/skills，与规则仓 ~/.vvnocode/rules 同一约定），
 #                    已存在则 git pull；重跑同一条命令即更新，软链不用重做。SKILLS_REPO_URL 可改为 fork 地址。
+#                    早期版本的托管位置是 ${XDG_DATA_HOME:-~/.local/share}/vvnocode-skills：新位置不存在而旧位置有副本时
+#                    自动搬过去，发现根里指向旧位置的链接重指到新位置。
 #   本仓 clone 内  ：直接用所在 clone，不联网、不建托管副本。
 # 已存在的普通目录或指向别处的链接只告警、不覆盖。
 #
@@ -25,9 +27,10 @@ set -euo pipefail
 main() {
 
     REPO_URL="${SKILLS_REPO_URL:-https://github.com/vvnocode/skills.git}"
-    REPO_DIR="${SKILLS_REPO_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/vvnocode-skills}"
+    REPO_DIR="${SKILLS_REPO_DIR:-$HOME/.vvnocode/skills}"
+    LEGACY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/vvnocode-skills"   # 早期默认托管位置，见下方迁移
     ROOTS=("$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills")
-    ADDED=0; KEPT=0; WARN=0
+    ADDED=0; KEPT=0; MOVED=0; WARN=0
 
     # ── 仓库来源 ──
     # $0 所在目录同时有 install.sh 与 skills/ 即视为本仓 clone；管道运行时 $0 是 bash（或 /dev/fd/N），落到托管副本分支。
@@ -37,6 +40,12 @@ main() {
         echo "· 来源：本仓 clone $REPO"
     else
         command -v git >/dev/null || { echo "✗ 需要 git"; exit 1; }
+        # 旧默认位置迁移：只在用默认位置、新位置尚不存在、旧位置确是 git 仓库时搬；显式传了 SKILLS_REPO_DIR 不动旧目录
+        if [ -z "${SKILLS_REPO_DIR:-}" ] && [ ! -e "$REPO_DIR" ] && [ -d "$LEGACY_DIR/.git" ]; then
+            mkdir -p "$(dirname "$REPO_DIR")"
+            mv "$LEGACY_DIR" "$REPO_DIR"
+            echo "· 托管副本已从 $LEGACY_DIR 搬到 ${REPO_DIR}，指向旧位置的链接将重指"
+        fi
         if [ -d "$REPO_DIR/.git" ]; then
             # 已有托管副本：快进更新；拉不动（本地改动、断网）就沿用现有版本，不中断安装
             if git -C "$REPO_DIR" pull -q --ff-only; then
@@ -71,8 +80,15 @@ main() {
             [ -f "$src/SKILL.md" ] || { echo "⚠ 跳过 ${name}：skills/$name/SKILL.md 不存在"; WARN=$((WARN+1)); continue; }
             link="$root/$name"
             if [ -L "$link" ]; then
-                # 已是软链：指向本仓即就位，指向别处只告警（可能是另一份 canonical，不代做切换）
-                if [ "$(readlink "$link")" = "$src" ]; then KEPT=$((KEPT+1)); else echo "⚠ $link 已指向 $(readlink "$link")，未改动"; WARN=$((WARN+1)); fi
+                # 已是软链：指向本仓即就位；指向旧默认托管位置的是本脚本早期建的，重指到新位置；指向别处只告警（可能是另一份 canonical，不代做切换）
+                cur=$(readlink "$link")
+                if [ "$cur" = "$src" ]; then
+                    KEPT=$((KEPT+1))
+                elif [ "${cur#"$LEGACY_DIR/"}" != "$cur" ]; then
+                    rm "$link"; ln -s "$src" "$link"; MOVED=$((MOVED+1))
+                else
+                    echo "⚠ $link 已指向 ${cur}，未改动"; WARN=$((WARN+1))
+                fi
             elif [ -e "$link" ]; then
                 echo "⚠ $link 是普通目录/文件，未改动（如需改为链接请先自行移走）"; WARN=$((WARN+1))
             else
@@ -80,7 +96,7 @@ main() {
             fi
         done
     done
-    echo "· 安装完成：新建 $ADDED 条，已就位 $KEPT 条，告警 $WARN 条（发现根：${ROOTS[*]}）"
+    echo "· 安装完成：新建 $ADDED 条，已就位 $KEPT 条，重指 $MOVED 条，告警 $WARN 条（发现根：${ROOTS[*]}）"
 
     # ── 自带 setup 脚本的 skill 只提示、不代跑：setup 作用于某个具体仓库，装 skill 作用于整台机器，两者不是一回事 ──
     for name in "${NAMES[@]}"; do

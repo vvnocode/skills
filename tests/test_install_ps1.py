@@ -43,6 +43,7 @@ class InstallPs1Test(bash_tests.InstallTest):
     SKIP_TEXT = "! skipped nope"
     SETUP_FILE = "setup.ps1"
     SETUP_HINT = "ships setup.ps1"
+    LEGACY_ENV = "LOCALAPPDATA"
 
     def run_ps(self, command: str, cwd, env) -> subprocess.CompletedProcess:
         """跑一段 PowerShell 命令，stdout 按 UTF-8 解码。"""
@@ -70,6 +71,13 @@ class InstallPs1Test(bash_tests.InstallTest):
         for name in names:
             self.assert_linked(name, bash_tests.ROOT / "skills" / name)
         self.assertFalse(self.src.exists())
+
+    def run_piped_default_dir(self) -> subprocess.CompletedProcess:
+        """管道运行、走默认托管位置（不传 SKILLS_REPO_DIR）。"""
+        text = READ_LIKE_IRM.format(path=bash_tests.INSTALL_PS1)
+        proc = self.run_ps(f"& ([scriptblock]::Create(({text})))", self.elsewhere, self.env_without_repo_dir())
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        return proc
 
     @unittest.skipUnless(os.name == "nt", "代码页 936 / 1252 只有 Windows PowerShell 自带")
     def test_parses_and_runs_under_ansi_code_pages(self) -> None:

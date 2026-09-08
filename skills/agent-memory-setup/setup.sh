@@ -10,7 +10,7 @@ usage() {
 用法：setup.sh [仓库路径] [--with-rule]
 
   仓库路径     缺省为当前所在 git 仓库根
-  --with-rule  往 AGENTS.md 追加「项目记忆」节。跨工具全局规则（如 vvnocode/claude.md 的「项目记忆」节）已经约束
+  --with-rule  往 AGENTS.md 追加「项目记忆」节。跨工具全局规则（如 vvnocode/AGENTS.md 的「项目记忆」节）已经约束
                「仓内 .memory/ 存在时怎么读写」，装了它的机器不必每仓再写一份；只给没有全局规则的协作者用的仓库才需要。
 
 不需要 clone 本仓，在目标仓库目录下直接执行：

@@ -22,7 +22,7 @@ description: Use when a repo is worked on by more than one coding agent (Claude 
 | 项目级配置 | `.claude/settings.local.json` | `.codex/config.toml`（**需项目被信任**） | 无 | 无需 |
 | 全局 Skill 发现根 | `~/.claude/skills/` | `~/.codex/skills/` | `~/.agents/skills/` | `~/.config/opencode/skills/`、`~/.claude/skills/`、`~/.agents/skills/` |
 
-「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」四处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/claude.md](https://github.com/vvnocode/claude.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（`setup.sh --with-rule`）。
+「记忆读写规则来源」一行是关键：只有 Claude 自带「先读索引、按 frontmatter 写」的系统提示，其他三个工具只有规则文件里写了才会做。规则放在**用户级**最省事：一份跨工具规则仓软链到上表「用户级指令」四处，写一次「仓内 `.memory/` 存在时怎么读写」，所有仓库生效（参考 [vvnocode/AGENTS.md](https://github.com/vvnocode/AGENTS.md) 的「项目记忆」节）。没有全局规则的仓库才需要把规则写进仓内 `AGENTS.md`（`setup.sh --with-rule`）。
 
 ## 一键执行
 

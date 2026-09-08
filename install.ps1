@@ -8,9 +8,12 @@ Usage (no manual clone needed; the built-in Windows PowerShell 5.1 is enough, no
   powershell -ExecutionPolicy Bypass -File .\install.ps1 [NAME...]     # inside a clone of this repo: link that clone (development)
 
 Where the repo comes from is decided by where the script runs, same as install.sh:
-  outside a clone / piped : clone the repo into $env:SKILLS_REPO_DIR (default %LOCALAPPDATA%\vvnocode-skills), or git pull
-                            if it already exists. Re-running the same command updates it; links stay valid.
-                            $env:SKILLS_REPO_URL may point at a fork.
+  outside a clone / piped : clone the repo into $env:SKILLS_REPO_DIR (default %USERPROFILE%\.vvnocode\skills, the same
+                            convention as the rules repo at %USERPROFILE%\.vvnocode\rules), or git pull if it already
+                            exists. Re-running the same command updates it; links stay valid. $env:SKILLS_REPO_URL may
+                            point at a fork. Early versions kept the managed clone at %LOCALAPPDATA%\vvnocode-skills:
+                            when the new location is absent and the old one holds a clone it is moved, and links in the
+                            roots that point into the old location are repointed.
   inside a clone          : use that clone directly, no network, no managed copy.
 
 Directories are mounted as junctions on Windows (no admin rights or Developer Mode needed); agents read through them
@@ -39,10 +42,11 @@ param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Names = @())
     $UserHome = if ($IsWin) { $env:USERPROFILE } else { $HOME }   # agents on Windows resolve ~/.claude etc. via USERPROFILE
     $RepoUrl = if ($env:SKILLS_REPO_URL) { $env:SKILLS_REPO_URL } else { 'https://github.com/vvnocode/skills.git' }
     $DataHome = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path (Join-Path $UserHome '.local') 'share' }   # non-Windows pwsh (tests): XDG location
-    $RepoDir = if ($env:SKILLS_REPO_DIR) { $env:SKILLS_REPO_DIR } else { Join-Path $DataHome 'vvnocode-skills' }
+    $RepoDir = if ($env:SKILLS_REPO_DIR) { $env:SKILLS_REPO_DIR } else { Join-Path (Join-Path $UserHome '.vvnocode') 'skills' }
+    $LegacyDir = Join-Path $DataHome 'vvnocode-skills'   # early default managed location, migrated below
     $Roots = @('.agents', '.claude', '.codex') | ForEach-Object { Join-Path (Join-Path $UserHome $_) 'skills' }
     $LinkType = if ($IsWin) { 'Junction' } else { 'SymbolicLink' }   # junctions exist only on Windows; other platforms use symlinks
-    $Added = 0; $Kept = 0; $Warn = 0
+    $Added = 0; $Kept = 0; $Moved = 0; $Warn = 0
 
     # Native commands (git) writing to stderr can be promoted to terminating errors by Windows PowerShell 5.1 under
     # 'Stop'; relax the preference for the call and judge by exit code only. git's stdout goes to the host so the
@@ -67,6 +71,12 @@ param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Names = @())
         Write-Host "* source: local clone $Repo"
     } else {
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'x git is required' }
+        # Legacy location: only when the default is in use, the new location is absent and the old one is a git repo
+        if (-not $env:SKILLS_REPO_DIR -and -not (Test-Path $RepoDir) -and (Test-Path (Join-Path $LegacyDir '.git') -PathType Container)) {
+            New-Item -ItemType Directory -Force (Split-Path $RepoDir -Parent) | Out-Null
+            Move-Item -LiteralPath $LegacyDir -Destination $RepoDir
+            Write-Host "* managed clone moved from $LegacyDir to $RepoDir; links into the old location will be repointed"
+        }
         if (Test-Path (Join-Path $RepoDir '.git') -PathType Container) {
             # Managed copy exists: fast-forward it; if that fails (local edits, no network) keep what is there and go on
             if ((Invoke-Git -C $RepoDir pull -q --ff-only) -eq 0) {
@@ -100,9 +110,16 @@ param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Names = @())
             $link = Join-Path $root $name
             $item = Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
             if ($item -and $item.LinkType) {
-                # Already a link: pointing at this repo means done; pointing elsewhere is only reported (may be another canonical copy)
+                # Already a link: pointing at this repo means done; pointing into the legacy managed location was made by an
+                # early version of this script and is repointed; pointing elsewhere is only reported (may be another canonical copy)
                 $target = [string](@($item.Target)[0])
+                $legacyPrefix = (Get-NormalizedPath $LegacyDir) + [IO.Path]::DirectorySeparatorChar
                 if ((Get-NormalizedPath $target) -eq (Get-NormalizedPath $src)) { $Kept++ }
+                elseif ((Get-NormalizedPath $target).StartsWith($legacyPrefix)) {
+                    $item.Delete()   # removes the link only, never its target
+                    New-Item -ItemType $LinkType -Path $link -Value $src | Out-Null
+                    $Moved++
+                }
                 else { Write-Host "! $link already points to ${target}, left unchanged"; $Warn++ }
             } elseif ($item) {
                 Write-Host "! $link is a plain directory or file, left unchanged (move it away to replace it with a link)"; $Warn++
@@ -112,7 +129,7 @@ param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Names = @())
             }
         }
     }
-    Write-Host "* done: added $Added, kept $Kept, warnings $Warn (roots: $($Roots -join ' '))"
+    Write-Host "* done: added $Added, kept $Kept, repointed $Moved, warnings $Warn (roots: $($Roots -join ' '))"
 
     # -- Skills that ship a setup script are only announced, never run: a setup acts on one specific repo,
     #    installing skills acts on the whole machine --

@@ -9,6 +9,7 @@
 - 发现根已有指向别处的同名链接：只告警不覆盖
 - 传了不存在的 skill 名：告警跳过，其余照装
 - 自带 setup 脚本的 skill：装完后打印提示（含已挂载路径），没有的不打印
+- 未传 SKILLS_REPO_DIR：托管副本落在 ~/.vvnocode/skills；旧默认位置（XDG_DATA_HOME 下的 vvnocode-skills）已有副本时搬过去，指向旧位置的链接重指
 """
 from __future__ import annotations
 
@@ -53,6 +54,7 @@ class InstallTest(unittest.TestCase):
     SKIP_TEXT = "⚠ 跳过 nope"
     SETUP_FILE = "setup.sh"          # 该脚本会检测并提示的 setup 文件名
     SETUP_HINT = "自带 setup.sh"      # 提示行里的固定文字
+    LEGACY_ENV = "XDG_DATA_HOME"     # 旧默认托管位置的父目录由这个环境变量决定（install.ps1 用 LOCALAPPDATA）
 
     def setUp(self) -> None:
         """临时 HOME、临时远端仓、临时托管副本目录、仓库之外的工作目录。"""
@@ -196,6 +198,46 @@ class InstallTest(unittest.TestCase):
         self.assertIn("beta", hint[0])
         self.assertIn(os.path.normcase(str(self.link(".agents/skills", "beta"))), os.path.normcase(hint[0]))
         self.assertNotIn("alpha", hint[0])
+
+    # ── 默认托管位置与迁移 ──
+    def env_without_repo_dir(self) -> dict[str, str]:
+        """不指定 SKILLS_REPO_DIR，让脚本用默认位置；旧默认位置的父目录指到临时目录。"""
+        env = self.env()
+        env.pop("SKILLS_REPO_DIR")
+        env[self.LEGACY_ENV] = str(self.home / "legacy-parent")
+        return env
+
+    def run_piped_default_dir(self) -> subprocess.CompletedProcess:
+        """管道运行，但走默认托管位置。"""
+        proc = subprocess.run(
+            ["bash", "-s", "--"], input=INSTALL.read_text(encoding="utf-8"),
+            cwd=self.elsewhere, env=self.env_without_repo_dir(), capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        return proc
+
+    def test_default_dir_is_under_vvnocode(self) -> None:
+        """未传 SKILLS_REPO_DIR：托管副本落在 ~/.vvnocode/skills。"""
+        self.make_origin("alpha")
+        self.run_piped_default_dir()
+        new_dir = self.home / ".vvnocode" / "skills"
+        self.assertTrue((new_dir / ".git").is_dir(), "默认托管位置应为 ~/.vvnocode/skills")
+        self.assert_linked("alpha", new_dir / "skills" / "alpha")
+
+    def test_legacy_dir_is_moved_and_links_repointed(self) -> None:
+        """旧默认位置已有托管副本：搬到 ~/.vvnocode/skills，旧目录消失，指向旧位置的链接重指到新位置。"""
+        self.make_origin("alpha")
+        legacy = self.home / "legacy-parent" / "vvnocode-skills"
+        legacy.parent.mkdir(parents=True)
+        subprocess.run(["git", "clone", "-q", self.origin.as_uri(), str(legacy)], check=True, capture_output=True)
+        (self.home / ".claude" / "skills").mkdir(parents=True)
+        make_link(self.link(".claude/skills", "alpha"), legacy / "skills" / "alpha")
+        proc = self.run_piped_default_dir()
+        new_dir = self.home / ".vvnocode" / "skills"
+        self.assertTrue((new_dir / ".git").is_dir(), proc.stdout)
+        self.assertFalse(legacy.exists(), "旧托管目录应已搬走")
+        self.assert_linked("alpha", new_dir / "skills" / "alpha")
+        self.assertNotIn(self.WARN_MARK, proc.stdout, proc.stdout)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ Lets Claude Code / Codex / dsh / opencode share one instruction file (AGENTS.md)
 Usage:  setup.ps1 [RepoPath] [-WithRule]        (the setup.sh spelling --with-rule is accepted as well)
   RepoPath   defaults to the git repository that contains the current directory
   -WithRule  append the "project memory" section to AGENTS.md. Machines carrying a cross-tool global rule set (for example
-             the "project memory" section of vvnocode/claude.md) do not need it; only repos meant for collaborators
+             the "project memory" section of vvnocode/AGENTS.md) do not need it; only repos meant for collaborators
              without such global rules do.
 
 Without a clone (run inside the target repo):
@@ -79,7 +79,7 @@ Usage: setup.ps1 [RepoPath] [-WithRule]        (--with-rule is accepted as well)
 
   RepoPath   defaults to the git repository that contains the current directory
   -WithRule  append the "project memory" section to AGENTS.md. Machines carrying a cross-tool global rule set
-             (for example the "project memory" section of vvnocode/claude.md) do not need it; only repos meant for
+             (for example the "project memory" section of vvnocode/AGENTS.md) do not need it; only repos meant for
              collaborators without such global rules do.
 
 Without a clone, run inside the target repo:

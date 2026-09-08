@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/vvnocode/skills/main/skills/agent-m
 | 参数 | 含义 |
 |---|---|
 | `仓库路径` | 缺省为当前所在 git 仓库根 |
-| `--with-rule` | 往 `AGENTS.md` 追加「项目记忆」节。装了跨工具全局规则（如 [vvnocode/claude.md](https://github.com/vvnocode/claude.md) 的「项目记忆」节）的机器不需要；只给没有全局规则的协作者用的仓库才加 |
+| `--with-rule` | 往 `AGENTS.md` 追加「项目记忆」节。装了跨工具全局规则（如 [vvnocode/AGENTS.md](https://github.com/vvnocode/AGENTS.md) 的「项目记忆」节）的机器不需要；只给没有全局规则的协作者用的仓库才加 |
 
 幂等：只补缺不覆盖；不能自动裁定的冲突只告警交人工。跑完按输出做两件人工事：往 `~/.codex/config.toml` 追加信任片段（用 Codex 才需要），再逐工具验证。
 

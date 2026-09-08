@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/vvnocode/skills/main/install.sh | b
 curl -fsSL https://raw.githubusercontent.com/vvnocode/skills/main/install.sh | bash -s -- agent-memory-setup
 ```
 
-脚本先把本仓 clone 到 `~/.vvnocode/skills`（`SKILLS_REPO_DIR` 改位置，`SKILLS_REPO_URL` 改为 fork；早期版本放在 `~/.local/share/vvnocode-skills`，重跑安装会自动搬过来并重指链接），再把 `skills/*` 软链到三处全局发现根，幂等、只增不减：`~/.agents/skills/`（跨工具 canonical 根，dsh、opencode、Cline、Dexto、Kimi、Warp、Zed 等直接读）、`~/.claude/skills/`（Claude Code 只认此处）、`~/.codex/skills/`（Codex 只认此处）。已存在的普通目录或指向别处的链接只告警、不覆盖。各工具的规则入口与 Skill 发现根以 [vvnocode/claude.md 的支持矩阵](https://github.com/vvnocode/claude.md#支持矩阵) 为唯一正本，本仓不另维护。
+脚本先把本仓 clone 到 `~/.vvnocode/skills`（`SKILLS_REPO_DIR` 改位置，`SKILLS_REPO_URL` 改为 fork；早期版本放在 `~/.local/share/vvnocode-skills`，重跑安装会自动搬过来并重指链接），再把 `skills/*` 软链到三处全局发现根，幂等、只增不减：`~/.agents/skills/`（跨工具 canonical 根，dsh、opencode、Cline、Dexto、Kimi、Warp、Zed 等直接读）、`~/.claude/skills/`（Claude Code 只认此处）、`~/.codex/skills/`（Codex 只认此处）。已存在的普通目录或指向别处的链接只告警、不覆盖。各工具的规则入口与 Skill 发现根以 [vvnocode/AGENTS.md 的支持矩阵](https://github.com/vvnocode/AGENTS.md#支持矩阵) 为唯一正本，本仓不另维护。
 
 - 更新：重跑同一条命令，内部 `git pull`，软链不用重做。
 - 卸载：删掉三处发现根下的对应软链，再删 `~/.vvnocode/skills`。
@@ -66,14 +66,14 @@ python3 -m unittest discover -s tests -v
 
 | 仓库 | 管什么 | 装到哪 | 缺了会怎样 |
 |---|---|---|---|
-| [claude.md](https://github.com/vvnocode/claude.md) | 跨工具全局规则，含「项目记忆」读写规则与 llm-wiki 路由段 | `~/.vvnocode/rules`，软链到各工具的用户级规则入口 | 记忆读写规则没人下发：接线时用 `setup.sh --with-rule` 写进仓内 `AGENTS.md`；llm-wiki 路由段手工粘贴 |
+| [AGENTS.md](https://github.com/vvnocode/AGENTS.md) | 跨工具全局规则，含「项目记忆」读写规则与 llm-wiki 路由段 | `~/.vvnocode/rules`，软链到各工具的用户级规则入口 | 记忆读写规则没人下发：接线时用 `setup.sh --with-rule` 写进仓内 `AGENTS.md`；llm-wiki 路由段手工粘贴 |
 | [skills](https://github.com/vvnocode/skills)（本仓） | 可公开分发的 skill，含给任意仓库接线的 `agent-memory-setup` | `~/.vvnocode/skills`，软链到三处全局 Skill 发现根 | 仓库不接线，偏好走各工具自带记忆；llm-wiki 的 bootstrap 会自动补装本仓 |
 | [llm-wiki](https://github.com/vvnocode/llm-wiki) | 个人知识工作台：跨项目的机制、决策、案例 | 目录自选，`~/.llm-wiki` 软链指过去。它是数据仓、可一机多实例，不进 `~/.vvnocode` | 规则里的「全局知识工作台」整段失效，不查不写 |
 
 运行时只有两处条件门把三者接起来：仓内有 `.memory/` 才读写记忆，本机有 `~/.llm-wiki` 才查写 wiki。装规则仓一行命令：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vvnocode/claude.md/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/vvnocode/AGENTS.md/main/install.sh | bash
 ```
 
 llm-wiki 按其 README 或 `SETUP-FOR-AI.md` 部署。
